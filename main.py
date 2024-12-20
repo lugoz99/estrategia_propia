@@ -1,283 +1,159 @@
-import threading
+import json
 import time
-from dash import Dash, html, dcc, Input, Output, State, no_update
-import dash_bootstrap_components as dbc
-import dash_cytoscape as cyto
-from dash.exceptions import PreventUpdate
+import numpy as np
+from pymongo import MongoClient
 from Estrategia3 import Estrategia3
+from EstrategiaFuerzBruta import EstrategiaFuerzaBruta
+
 from ProbabilidadEp import ProbabilidadEP
 
-# Crear una instancia de la aplicación Dash con el tema de Bootstrap
-app = Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-app.title = "Proyecto Final: Análisis y Diseño de Algoritmos"
+
+class InMemoryDB:
+    def __init__(self):
+        self.data = []
+
+    def insert_one(self, data):
+        self.data.append(data)
+        print("Datos guardados en memoria:", data)
+
+    def find(self):
+        return self.data
 
 
-# Función para generar grafos bipartitos
-def generar_grafos_bipartitos_correctos(particion):
-    grafo1, grafo2 = particion
+# Intentar conexión a MongoDB con timeout
+try:
+    client = MongoClient("mongodb://localhost:27017/", serverSelectionTimeoutMS=2000)
+    client.server_info()  # Esto lanza una excepción si la conexión falla
+    db = client["proyecto_algoritmos"]
+    collection = db["resultados_pruebas"]
+    print("Conexión exitosa a MongoDB")
+except Exception as e:
+    print(f"Error al conectar a MongoDB: {e}")
+    print("Usando almacenamiento en memoria...")
+    collection = InMemoryDB()
 
-    # Primer grafo: conexiones entre grafo1 presente y futuro
-    nodes_grafo1 = [
-        {"data": {"id": nodo, "label": nodo}, "classes": "futuro"} for nodo in grafo1[0]
-    ]
-    nodes_grafo1 += [
-        {"data": {"id": nodo, "label": nodo}, "classes": "presente"}
-        for nodo in grafo1[1]
-    ]
-    edges_grafo1 = [
-        {"data": {"source": presente, "target": futuro}, "classes": "highlight"}
-        for presente in grafo1[1]
-        for futuro in grafo1[0]
-    ]
-
-    # Segundo grafo: conexiones entre grafo2 presente y futuro
-    nodes_grafo2 = [
-        {"data": {"id": nodo, "label": nodo}, "classes": "futuro"} for nodo in grafo2[0]
-    ]
-    nodes_grafo2 += [
-        {"data": {"id": nodo, "label": nodo}, "classes": "presente"}
-        for nodo in grafo2[1]
-    ]
-    edges_grafo2 = [
-        {"data": {"source": presente, "target": futuro}, "classes": "highlight-alt"}
-        for presente in grafo2[1]
-        for futuro in grafo2[0]
-    ]
-
-    return (nodes_grafo1, edges_grafo1), (nodes_grafo2, edges_grafo2)
+# Inicializar ProbabilidadEP
+prob_ep = ProbabilidadEP()
 
 
-# Layout de la aplicación
-app.layout = dbc.Container(
-    [
-        dbc.Navbar(
-            dbc.Container(
-                [
-                    dbc.NavbarBrand(
-                        "Proyecto Final: Análisis y Diseño de Algoritmos 2024-2",
-                        className="ms-2",
-                    ),
-                ]
-            ),
-            color="primary",
-            dark=True,
-        ),
-        dbc.Card(
-            [
-                dbc.CardBody(
-                    [
-                        html.Div(
-                            [
-                                dbc.Row(
-                                    [
-                                        dbc.Col(
-                                            html.Label("Seleccione una matriz:"),
-                                            width=3,
-                                        ),
-                                        dbc.Col(
-                                            dcc.Dropdown(
-                                                id="matriz-dropdown",
-                                                options=[],
-                                                placeholder="Cargando matrices...",
-                                                className="mb-2",
-                                            ),
-                                            width=9,
-                                        ),
-                                    ]
-                                ),
-                                dbc.Row(
-                                    [
-                                        dbc.Col(
-                                            html.Label("Estado actual (Ejemplo: 0,1):"),
-                                            width=3,
-                                        ),
-                                        dbc.Col(
-                                            dcc.Input(
-                                                id="estado-actual",
-                                                type="text",
-                                                placeholder="0,1",
-                                                className="mb-2",
-                                            ),
-                                            width=9,
-                                        ),
-                                    ]
-                                ),
-                                dbc.Row(
-                                    [
-                                        dbc.Col(
-                                            html.Label(
-                                                "Factor de enfriamiento (Ejemplo: 0.85):"
-                                            ),
-                                            width=3,
-                                        ),
-                                        dbc.Col(
-                                            dcc.Input(
-                                                id="factor-enfriamiento",
-                                                type="number",
-                                                placeholder="0.85",
-                                                className="mb-2",
-                                            ),
-                                            width=9,
-                                        ),
-                                    ]
-                                ),
-                            ],
-                            className="mb-3",
-                        ),
-                        dbc.Button(
-                            "Ejecutar Algoritmo",
-                            id="ejecutar-btn",
-                            color="primary",
-                            className="w-100",
-                        ),
-                    ]
-                )
-            ],
-            className="my-4",
-        ),
-        dbc.Alert(
-            id="resultado",
-            color="info",
-            is_open=False,
-            dismissable=True,
-            className="my-4",
-        ),
-        dbc.Row(
-            [
-                dbc.Col(
-                    [
-                        html.H3("Primer Grafo Bipartito", className="text-center mb-3"),
-                        cyto.Cytoscape(
-                            id="grafo1",
-                            layout={"name": "circle", "nodeSpacing": 50},
-                            style={
-                                "width": "100%",
-                                "height": "500px",
-                                "backgroundColor": "#f8f9fa",
-                            },
-                            stylesheet=[
-                                {
-                                    "selector": ".presente",
-                                    "style": {
-                                        "background-color": "#0074D9",
-                                        "label": "data(label)",
-                                    },
-                                },
-                                {
-                                    "selector": ".futuro",
-                                    "style": {
-                                        "background-color": "#2ECC40",
-                                        "label": "data(label)",
-                                    },
-                                },
-                                {
-                                    "selector": ".highlight",
-                                    "style": {"line-color": "#FF4136", "width": 3},
-                                },
-                            ],
-                            elements=[],
-                        ),
-                    ],
-                    width=6,
-                ),
-                dbc.Col(
-                    [
-                        html.H3(
-                            "Segundo Grafo Bipartito", className="text-center mb-3"
-                        ),
-                        cyto.Cytoscape(
-                            id="grafo2",
-                            layout={"name": "circle", "nodeSpacing": 50},
-                            style={
-                                "width": "100%",
-                                "height": "500px",
-                                "backgroundColor": "#f8f9fa",
-                            },
-                            stylesheet=[
-                                {
-                                    "selector": ".presente",
-                                    "style": {
-                                        "background-color": "#0074D9",
-                                        "label": "data(label)",
-                                    },
-                                },
-                                {
-                                    "selector": ".futuro",
-                                    "style": {
-                                        "background-color": "#2ECC40",
-                                        "label": "data(label)",
-                                    },
-                                },
-                                {
-                                    "selector": ".highlight-alt",
-                                    "style": {"line-color": "#FF851B", "width": 3},
-                                },
-                            ],
-                            elements=[],
-                        ),
-                    ],
-                    width=6,
-                ),
-            ]
-        ),
-    ],
-    fluid=True,
-)
+def registrar_resultados(data):
+    try:
+        # Convertir valores numpy a Python nativo
+        def convertir_nativo(obj):
+            if isinstance(obj, np.integer):
+                return int(obj)
+            elif isinstance(obj, np.floating):
+                return float(obj)
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            return obj
+
+        data_converted = json.loads(json.dumps(data, default=convertir_nativo))
+        print(f"Registrando en MongoDB: {json.dumps(data_converted, indent=4)}")
+        collection.insert_one(data_converted)
+        print("Resultados guardados exitosamente en MongoDB")
+        return True
+    except Exception as e:
+        print(f"Error al registrar resultados: {e}")
+        return False
 
 
-@app.callback(
-    [
-        Output("matriz-dropdown", "options"),
-        Output("resultado", "children"),
-        Output("resultado", "is_open"),
-        Output("grafo1", "elements"),
-        Output("grafo2", "elements"),
-    ],
-    [Input("ejecutar-btn", "n_clicks")],
-    [
-        State("matriz-dropdown", "value"),
-        State("estado-actual", "value"),
-        State("factor-enfriamiento", "value"),
-    ],
-)
-def actualizar_grafos(n_clicks, matriz, estado_actual, factor):
-    if n_clicks is None:
-        prob_ep = ProbabilidadEP()
-        return [
-            [{"label": opcion, "value": opcion} for opcion in prob_ep.listaMatrices()],
-            "",
-            False,
-            [],
-            [],
-        ]
+def ejecutar_fuerza_bruta(matriz, estado_actual):
+    try:
+        matrices = prob_ep.datosMatrices(matriz)
+        if matrices is None:
+            raise ValueError(f"No se encontraron datos para la matriz '{matriz}'.")
 
-    if not matriz or not estado_actual or not factor:
-        raise PreventUpdate
+        c1 = prob_ep.retornarEstados(matrices)
+        c2 = prob_ep.retornarEstadosFuturos(matrices)
 
-    prob_ep = ProbabilidadEP()
-    estrategia3 = Estrategia3()
+        estrategia_fb = EstrategiaFuerzaBruta()
+        inicio = time.time()
+        particion, diferencia = estrategia_fb.retornarMejorParticion(
+            c1, c2, estado_actual, matriz
+        )
+        tiempo = time.time() - inicio
 
-    matrices = prob_ep.datosMatrices(matriz)
-    c1 = prob_ep.retornarEstados(matrices)
-    c2 = prob_ep.retornarEstadosFuturos(matrices)
+        registrar_resultados(
+            {
+                "metodo": "fuerza_bruta",
+                "matriz": matriz,
+                "estado_actual": estado_actual,
+                "resultado": {
+                    "particion": particion,
+                    "diferencia": float(diferencia),
+                    "tiempo": float(tiempo),
+                },
+            }
+        )
 
-    estado_actual = tuple(map(int, estado_actual.split(",")))
-    particion, diferencia, tiempo, _ = estrategia3.retornarMejorParticion(
-        c1, c2, estado_actual, matriz, factor
-    )
+        print(
+            f"Fuerza Bruta ejecutada: Diferencia: {diferencia:.4f} | Tiempo: {tiempo:.2f}s"
+        )
+    except Exception as e:
+        print(f"Error al ejecutar Fuerza Bruta: {str(e)}")
 
-    grafo1, grafo2 = generar_grafos_bipartitos_correctos(particion)
-    nodes1, edges1 = grafo1
-    nodes2, edges2 = grafo2
 
-    return (
-        no_update,
-        f"Mejor partición: {particion} | Diferencia: {diferencia} | Tiempo de ejecución: {tiempo} segundos",
-        True,
-        nodes1 + edges1,
-        nodes2 + edges2,
-    )
+def ejecutar_recocido_simulado(matriz, estado_actual, factor_enfriamiento):
+    try:
+        if not 0 < factor_enfriamiento < 1:
+            raise ValueError("El factor de enfriamiento debe estar entre 0 y 1.")
+
+        matrices = prob_ep.datosMatrices(matriz)
+        if matrices is None:
+            raise ValueError(f"No se encontraron datos para la matriz '{matriz}'.")
+
+        c1 = prob_ep.retornarEstados(matrices)
+        c2 = prob_ep.retornarEstadosFuturos(matrices)
+
+        estrategia3 = Estrategia3()
+        particion, diferencia, tiempo, _ = estrategia3.retornarMejorParticion(
+            c1, c2, estado_actual, matriz, factor_enfriamiento
+        )
+
+        registrar_resultados(
+            {
+                "metodo": "recocido_simulado",
+                "matriz": matriz,
+                "estado_actual": estado_actual,
+                "factor": float(factor_enfriamiento),
+                "resultado": {
+                    "particion": particion,
+                    "diferencia": float(diferencia),
+                    "tiempo": float(tiempo),
+                },
+            }
+        )
+
+        print(
+            f"Recocido Simulado ejecutado: Diferencia: {diferencia:.4f} | Tiempo: {tiempo:.2f}s"
+        )
+    except Exception as e:
+        print(f"Error al ejecutar Recocido Simulado: {str(e)}")
 
 
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    # Listar opciones disponibles
+    opciones = prob_ep.listaMatrices()
+    print(f"Matrices disponibles: {', '.join(opciones)}")
+
+    # Menú interactivo
+    print("Seleccione el algoritmo a ejecutar:")
+    print("1. Fuerza Bruta")
+    print("2. Recocido Simulado")
+
+    seleccion = input("Ingrese el número de su elección: ")
+
+    if seleccion == "1":
+        matriz = input("Ingrese el nombre de la matriz: ")
+        estado_actual = input("Ingrese el estado actual: ")
+        ejecutar_fuerza_bruta(matriz, estado_actual)
+    elif seleccion == "2":
+        matriz = input("Ingrese el nombre de la matriz: ")
+        estado_actual = input("Ingrese el estado actual: ")
+        factor_enfriamiento = float(
+            input("Ingrese el factor de enfriamiento (0.1 - 0.9): ")
+        )
+        ejecutar_recocido_simulado(matriz, estado_actual, factor_enfriamiento)
+    else:
+        print("Selección inválida.")

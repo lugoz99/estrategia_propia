@@ -111,25 +111,12 @@ class Estrategia3:
         return transiciones, estados
 
     def retornarMejorParticion(self, c1, c2, estadoActual, opcion, factor):
-    # Obtiene la matriz correspondiente a la opción seleccionada.
-        # Aquí se inicia el proceso de análisis para determinar la mejor partición.
         matrices = self.datosMatriz(opcion)
-        
-        # Genera todas las transiciones posibles y los estados asociados.
-        # Esto prepara el terreno para evaluar distribuciones.
         resultado, estados = self.generarEstadoTransicion(matrices)
-        
-        # Calcula la distribución de probabilidad inicial basada en el estado actual.
-        # Esto sirve como referencia para medir las diferencias.
         distribucionProbabilidadOriginal = self.generarDistribucionProbabilidades(
             matrices, c1, c2, estadoActual, estados
         )
-        
-        # Marca el inicio del tiempo para medir el rendimiento del método.
         inicio = time.time()
-        
-        # Llama al método principal del recocido simulado, donde se realiza la optimización.
-        # Devuelve la partición encontrada, la diferencia asociada y otras métricas.
         particion, diferencia, lista = self.recocidoSimulado(
             matrices,
             estados,
@@ -139,37 +126,21 @@ class Estrategia3:
             estadoActual,
             factor,
         )
-        
-        # Calcula el tiempo transcurrido durante la ejecución del recocido.
         tiempo = time.time() - inicio
-        
-        # Retorna la mejor partición encontrada, la diferencia asociada y el tiempo de ejecución.
         return particion, diferencia, tiempo, lista
 
-    def recocidoSimulado(self, matrices, estados, disProbdOriginal, c1, c2, estadoActual, factor):
-        # Inicializa variables para almacenar la mejor partición encontrada y su diferencia.
+    def recocidoSimulado(
+        self, matrices, estados, disProbdOriginal, c1, c2, estadoActual, factor
+    ):
         mejor_particion = None
         menor_diferencia = float("inf")
-        
-        # Lista para almacenar particiones evaluadas (útil para seguimiento o depuración).
         listaParticionesEvaluadas = []
-        
-        # Define la temperatura inicial y las iteraciones por cada nivel de temperatura.
-        # Estos valores controlan el ritmo del enfriamiento y la exploración del espacio.
         temperatura = 1000
         iteraciones_por_temperatura = 10
 
-        # Inicia el proceso de enfriamiento simulado.
-        # Mientras la temperatura sea mayor que 1, el algoritmo sigue explorando.
         while temperatura > 1:
-            # Itera un número fijo de veces para cada nivel de temperatura.
             for _ in range(iteraciones_por_temperatura):
-                # Genera una partición vecina aleatoria.
-                # Esto introduce aleatoriedad y permite escapar de mínimos locales.
                 c1_izq, c2_izq, c1_der, c2_der = self.generar_vecino(c1, c2)
-                
-                # Calcula la diferencia para la partición generada.
-                # Evalúa qué tan cerca está esta partición de la distribución ideal.
                 diferencia = self.obtener_diferencia(
                     c1_izq,
                     c2_izq,
@@ -180,8 +151,6 @@ class Estrategia3:
                     disProbdOriginal,
                     estados,
                 )
-                
-                # Si la nueva partición tiene una menor diferencia, la acepta como mejor.
                 if diferencia < menor_diferencia:
                     menor_diferencia = diferencia
                     mejor_particion = [
@@ -189,8 +158,6 @@ class Estrategia3:
                         (tuple(c2_der), tuple(c1_der)),
                     ]
                 else:
-                    # Calcula la probabilidad de aceptación para una peor solución.
-                    # Esto introduce flexibilidad para aceptar soluciones subóptimas y escapar de mínimos locales.
                     probabilidad_aceptacion = math.exp(
                         (menor_diferencia - diferencia) / temperatura
                     )
@@ -200,14 +167,8 @@ class Estrategia3:
                             (tuple(c2_izq), tuple(c1_izq)),
                             (tuple(c2_der), tuple(c1_der)),
                         ]
-            
-            # Reduce la temperatura según el factor de enfriamiento.
-            # Esto asegura que el algoritmo converge gradualmente hacia una solución final.
             temperatura *= factor
-        
-        # Retorna la mejor partición encontrada, su diferencia y la lista de particiones evaluadas.
         return mejor_particion, menor_diferencia, listaParticionesEvaluadas
-
 
     def obtener_diferencia(
         self,

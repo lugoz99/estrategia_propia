@@ -1,0 +1,36 @@
+[
+    {
+        "metodo": "recocido",
+        "matriz": "Seis Nodos",
+        "estado_actual": [
+            11111
+        ],
+        "factor": 0.8,
+        "resultado": {
+            "particion": [
+                [
+                    [
+                        "B'",
+                        "F'",
+                        "E'"
+                    ],
+                    [
+                        "E",
+                        "D",
+                        "C"
+                    ]
+                ],
+                [
+                    [
+                        "A'",
+                        "C'",
+                        "D'"
+                    ],
+                    [
+                        "B",
+                        "F",
+                        "A"
+                    ]
+                ]
+            ],
+            "diferencia": 
